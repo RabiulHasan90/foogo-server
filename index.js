@@ -36,6 +36,10 @@ async function run() {
     const postCollection = client.db("foogo").collection("posts");
     const paymentCollection = client.db("foogo").collection("payments");
     const reviewCollection = client.db("foogo").collection("reviews");
+    const choosedeliverymanCollection = client.db("foogo").collection("choosedeliveryman");
+    const rforfoodCollection = client.db("foogo").collection("rforfood");
+    const cforfoodCollection = client.db("foogo").collection("cforfood");
+    const restaurantTransactionCollection = client.db("foogo").collection("restaurant-transactions");
     
 
        //admin dashboard admi get number of user
@@ -81,10 +85,54 @@ async function run() {
 
     //----------------------**********USERS COLLECTION*****************------------------
     
-    app.get('/users', async (req, res) => { 
+    app.get('/users/all', async (req, res) => { 
       const result = await userCollection.find().toArray();
       res.send(result);
     })
+    //  get user by email
+    app.get('/users', async (req, res) => {
+  const email = req.query.email;
+
+  if (!email) {
+    return res.status(400).send({ error: 'Email query parameter is required' });
+  }
+
+  try {
+    const user = await userCollection.findOne({ email: email });
+    if (user) {
+      res.send(user);
+    } else {
+      res.status(404).send({ error: 'User not found' });
+    }
+  } catch (err) {
+    res.status(500).send({ error: 'Internal server error' });
+  }
+});
+  /// update user Details
+  app.put('/users', async (req, res) => {
+  const email = req.query.email;
+  const { name, phone, location } = req.body;
+
+  if (!email) return res.status(400).send({ error: 'Email is required' });
+
+  const updateDoc = {
+    $set: {
+      ...(name && { name }),
+      ...(phone && { phone }),
+      ...(location && { location }),
+    }
+  };
+
+  try {
+    const result = await userCollection.updateOne({ email }, updateDoc, { upsert: true });
+    res.send(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ error: 'Failed to update user' });
+  }
+});
+
+
     app.post('/users', async (req, res) => { 
       const user = req.body;
       const query = {email: user.email}
@@ -127,6 +175,23 @@ async function run() {
       }
       res.send({ restaurant });
        })
+//fetch for delivery man
+     app.get('/users/deliveryman/:email', async (req, res) => {
+      const email = req.params.email;
+
+      if (email !== req.params.email) {
+        return res.status(403).send({ message: 'forbidden access' })
+      }
+
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      let deliveryman = false;
+      if (user) {
+        deliveryman = user?.role === 'deliveryman';
+      }
+      res.send({ deliveryman });
+       })
+       
     // user admin permission
     app.patch('/users/admin/:id', async (req, res) => {
   try {
@@ -421,6 +486,166 @@ async function run() {
       const result = await reviewCollection.find().toArray();
       res.send(result);
     });
+
+    //--------------**** CHOOSEDELIVERYMAN ***---------------------
+     app.post('/choosedeliveryman',  async (req, res) => {
+      const item = req.body;
+      const result = await choosedeliverymanCollection.insertOne(item);
+      res.send(result);
+    });
+    //----------------------- fetchby email deliveryman -----
+    
+  app.get('/choosedeliveryman', async (req, res) => {
+       const email = req.query.email;
+       if(!email){
+         return res.send([]) 
+       }
+       const query = {email: email}
+       const result = await choosedeliverymanCollection.find(query).toArray()
+       res.send(result)
+     }) 
+  app.patch('/choosedeliveryman', async (req, res) => {
+  const { id } = req.body;
+
+  const filter = { _id: new ObjectId(id) };
+  const updateDoc = {
+    $set: {
+      responce: 'delivery completed',
+    },
+  };
+
+  const result = await choosedeliverymanCollection.updateOne(filter, updateDoc);
+  res.send(result);
+});
+
+// --------------******************** HERE ALL REQUEST FOR FOOD **************-------
+ app.post('/rforfood',  async (req, res) => {
+      const item = req.body;
+      const result = await rforfoodCollection.insertOne(item);
+      res.send(result);
+    });
+ app.get('/rforfood/all',  async (req, res) => {
+      const result = await rforfoodCollection.find().toArray();
+      res.send(result);
+    });
+
+    app.post('/cforfood/all', async (req, res) => {
+  const item = req.body;
+
+  // Check if already exists using the original _id
+  const exists = await cforfoodCollection.findOne({ _id: item._id });
+
+  if (exists) {
+    return res.status(400).send({ message: 'Item already accepted' });
+  }
+
+  const result = await cforfoodCollection.insertOne(item);
+  res.send(result);
+});
+ app.get('/cforfood', async (req, res) => {
+       const email = req.query.email;
+       if(!email){
+         return res.send([])
+       }
+       const query = {email: email}
+       const result = await cforfoodCollection.find(query).toArray()
+       res.send(result)
+     }) 
+
+
+     app.post('/restaurant-transactions', async (req, res) => {
+  const { transactionId, restaurants, paidBy, date } = req.body;
+
+  const entries = restaurants.map(r => ({
+    restaurantemail: r.restaurantemail,
+    restaurantname: r.restaurantname,
+    totalEarning: r.total, 
+    paidBy,
+    transactionId,
+    date,
+    status: "pending", // or "toBePaid"
+    orders: r.orders.map(o => ({
+      menuId: o.menuId,
+      name: o.name,
+      price: o.price
+    }))
+  }));
+
+  const result = await restaurantTransactionCollection.insertMany(entries);
+  res.send({ insertedCount: result.insertedCount });
+});
+// Route: GET /payments/summary-by-restaurant
+// Assuming Express and MongoDB are set up
+app.get('/admin/restaurant-summary', async (req, res) => {
+  try {
+    const summary = await bookingCollection.aggregate([
+      {
+        $match: {
+          Response: "process" // optional filter
+        }
+      },
+      {
+        $group: {
+          _id: {
+            restaurantname: "$restaurantname",
+            restaurantemail: "$restaurantemail"
+          },
+          totalAmount: { $sum: "$price" },
+          totalOrders: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          restaurantname: "$_id.restaurantname",
+          restaurantemail: "$_id.restaurantemail",
+          totalAmount: 1,
+          totalOrders: 1
+        }
+      }
+    ]).toArray();
+
+    res.send(summary);
+  } catch (error) {
+    console.error('Failed to fetch admin summary:', error);
+    res.status(500).send({ message: 'Error fetching summary' });
+  }
+});
+
+// Backend endpoint using Express and MongoDB
+app.get('/restaurant-transactions', async (req, res) => {
+  try {
+    const result = await restaurantTransactionCollection
+      .find()
+      .sort({ date: -1 }) // optional: latest first
+      .toArray();
+    res.send(result);
+  } catch (error) {
+    console.error('Failed to fetch restaurant transactions', error);
+    res.status(500).send({ message: 'Error fetching restaurant transactions' });
+  }
+});
+// PATCH /restaurant-transactions/:id
+app.patch('/restaurant-transactions/:id', async (req, res) => {
+  const id = req.params.id;
+  const updateDoc = {
+    $set: {
+      status: req.body.status
+    }
+  };
+
+  const result = await restaurantTransactionCollection.updateOne(
+    { _id: new ObjectId(id) },
+    updateDoc
+  );
+
+  res.send(result);
+});
+
+
+
+ 
+
     // Send a ping to confirm a successful connection 
     // await client.db("admin").command({ ping: 1});
     // console.log("Pinged your deployment. You successfully connected to MongoDB!");
@@ -429,7 +654,7 @@ async function run() {
     //await client.close();
   }
 }
-run().catch(console.dir);
+run().catch(console.dir); 
 
 
 console.log("DB_USER:", process.env.DB_USER);
