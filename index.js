@@ -109,29 +109,72 @@ async function run() {
   }
 });
   /// update user Details
-  app.put('/users', async (req, res) => {
-  const email = req.query.email;
-  const { name, phone, location } = req.body;
+//   app.put('/users', async (req, res) => {
+//   const email = req.query.email;
+//   const { name, phone, location } = req.body;
 
-  if (!email) return res.status(400).send({ error: 'Email is required' });
+//   if (!email) return res.status(400).send({ error: 'Email is required' });
+
+//   const updateDoc = {
+//     $set: {
+//       ...(name && { name }),
+//       ...(phone && { phone }),
+//       ...(location && { location }),
+//     }
+//   };
+
+//   try {
+//     const result = await userCollection.updateOne({ email }, updateDoc, { upsert: true });
+//     res.send(result);
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).send({ error: 'Failed to update user' });
+//   }
+// });
+
+app.put('/users', async (req, res) => {
+  const email = req.query.email;
+  const {
+    name,
+    phone,
+    location,
+    wantTo,
+    details,
+    image
+  } = req.body;
+
+  if (!email) {
+    return res.status(400).send({ error: '❌ Email is required' });
+  }
+
+  // Build dynamic update object only with provided fields
+  const updateFields = {};
+  if (name) updateFields.name = name;
+  if (phone) updateFields.phone = phone;
+  if (location) updateFields.location = location;
+  if (wantTo) updateFields.wantTo = wantTo;
+  if (details) updateFields.details = details;
+  if (image) updateFields.image = image;
 
   const updateDoc = {
-    $set: {
-      ...(name && { name }),
-      ...(phone && { phone }),
-      ...(location && { location }),
-    }
+    $set: updateFields,
   };
 
   try {
-    const result = await userCollection.updateOne({ email }, updateDoc, { upsert: true });
+    const result = await userCollection.updateOne(
+      { email },
+      updateDoc,
+      { upsert: true } // insert if not exist
+    );
     res.send(result);
   } catch (err) {
-    console.error(err);
-    res.status(500).send({ error: 'Failed to update user' });
+    console.error("Update error:", err);
+    res.status(500).send({ error: '❌ Failed to update user' });
   }
 });
 
+
+// post in user collection
 
     app.post('/users', async (req, res) => { 
       const user = req.body;
@@ -143,6 +186,13 @@ async function run() {
       const result = await userCollection.insertOne(user);
       res.send(result);
     })
+
+      app.get('/users/get/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await userCollection.findOne(query);
+      res.send(result);
+    });
     // permision for admin
      app.get('/users/admin/:email', async (req, res) => {
       const email = req.params.email;
@@ -202,7 +252,7 @@ async function run() {
     const user = await userCollection.findOne(filter);
 
     // Determine the new role based on the current role
-    const newRole = user?.role === 'admin' ? 'customer' : 'admin';
+    const newRole = user?.role === 'admin' ? 'user' : 'admin';
 
     const updateDoc = {
       $set: {
@@ -217,6 +267,31 @@ async function run() {
     res.status(500).send({ message: 'An error occurred while updating the user role.', error });
   }
 });
+
+app.put('/users/admin/approved/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { role } = req.body;
+
+    if (!role) {
+      return res.status(400).json({ error: 'Role is required in body' });
+    }
+
+    const filter = { _id: new ObjectId(id) };
+    const updateDoc = { $set: { role } };
+
+    const result = await userCollection.updateOne(filter, updateDoc);
+    res.send(result); // { matchedCount, modifiedCount, ... }
+  } catch (err) {
+    console.error('Error updating role:', err);
+    res.status(500).json({ error: 'Failed to update role' });
+  }
+});
+
+
+
+
+
     //--------------------------**********MENU COLLECTION*****************------------------
     //menu get by query email
       app.get('/menu/:email', async (req, res) => {
@@ -542,6 +617,7 @@ async function run() {
   const result = await cforfoodCollection.insertOne(item);
   res.send(result);
 });
+// this is for user
  app.get('/cforfood', async (req, res) => {
        const email = req.query.email;
        if(!email){
@@ -574,6 +650,20 @@ async function run() {
   const result = await restaurantTransactionCollection.insertMany(entries);
   res.send({ insertedCount: result.insertedCount });
 });
+
+// this is for restaurant
+  app.get('/cforfood/r/:email', async (req, res) => {
+  try {
+    const email = req.params.email; 
+    const query = { restaurantemail: email };
+    const result = await cforfoodCollection.find(query).toArray();
+    res.send(result);
+  } catch (error) { 
+    console.error("Error in GET /cforfood/r/:email:", error);
+    res.status(500).send({ message: "Server error" });
+  }
+        });
+
 // Route: GET /payments/summary-by-restaurant
 // Assuming Express and MongoDB are set up
 app.get('/admin/restaurant-summary', async (req, res) => {
