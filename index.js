@@ -267,6 +267,24 @@ app.put('/users', async (req, res) => {
     res.status(500).send({ message: 'An error occurred while updating the user role.', error });
   }
 });
+//fetch for delivery man
+     app.get('/users/customer/m/:email', async (req, res) => {
+      const email = req.params.email;
+
+      if (email !== req.params.email) {
+        return res.status(403).send({ message: 'forbidden access' })
+      }
+
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      let customer = false;
+      if (user) {
+        customer = user?.role === 'user';
+      }
+      res.send({ customer});
+       })
+
+
 
 app.put('/users/admin/approved/:id', async (req, res) => {
   try {
